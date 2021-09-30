@@ -1,122 +1,27 @@
-import { BigInt, BigDecimal, Address, Bytes, ByteArray, log, store } from '@graphprotocol/graph-ts'
-import { LOG_CALL, LOG_JOIN, LOG_EXIT, LOG_SWAP, Transfer } from '../types/templates/Pool/Pool'
-import { BToken } from '../types/templates/Pool/BToken'
-import { BTokenBytes } from '../types/templates/Pool/BTokenBytes'
-
+import { BigInt, Address, Bytes, store } from '@graphprotocol/graph-ts'
+import { LOG_CALL, LOG_JOIN, LOG_EXIT, LOG_SWAP, Transfer, GulpCall } from '../types/templates/Pool/Pool'
+import { Pool as BPool } from '../types/templates/Pool/Pool'
 import {
   Balancer,
   Pool,
-  User,
   PoolToken,
   PoolShare,
-  Transaction,
-  Swap
+  Swap,
+  TokenPrice
 } from '../types/schema'
-
-/************************************
- ********** Helpers ***********
- ************************************/
-
-function hexToDecimal(hexString: String, decimals: i32): BigDecimal {
-  let bytes = Bytes.fromHexString(hexString).reverse() as Bytes
-  let bi = BigInt.fromUnsignedBytes(bytes)
-  let scale = BigInt.fromI32(10).pow(decimals as u8).toBigDecimal()
-  return bi.divDecimal(scale)
-}
-
-function bigIntToDecimal(amount: BigInt, decimals: i32): BigDecimal {
-  let scale = BigInt.fromI32(10).pow(decimals as u8).toBigDecimal()
-  return amount.toBigDecimal().div(scale)
-}
-
-function tokenToDecimal(amount: BigDecimal, decimals: i32): BigDecimal {
-  let scale = BigInt.fromI32(10).pow(decimals as u8).toBigDecimal()
-  return amount.div(scale)
-}
-
-function createPoolShareEntity(id: string, pool: String, user: String): void {
-
-  let poolShare = new PoolShare(id)
-
-  let userdb = User.load(user)
-  if (userdb == null) {
-    userdb = new User(user)
-    userdb.save()
-  }
-  poolShare.userAddress = user
-  poolShare.poolId = pool
-  poolShare.balance = BigDecimal.fromString('0')
-  poolShare.save()
-}
-
-function createPoolTokenEntity(id: string, pool: String, address: String): void {
-  let token = BToken.bind(Address.fromString(address))
-  let tokenBytes = BTokenBytes.bind(Address.fromString(address))
-  let symbol = ''
-  let name = ''
-  let decimals = 18
-
-  // COMMENT THE LINES BELOW OUT FOR LOCAL DEV ON KOVAN
-
-  let symbolCall = token.try_symbol()
-  let nameCall = token.try_name()
-  let decimalCall = token.try_decimals()
-
-  if (symbolCall.reverted) {
-    let symbolBytesCall = tokenBytes.try_symbol()
-    if (!symbolBytesCall.reverted) {
-      symbol = symbolBytesCall.value.toString()
-    }
-  } else {
-    symbol = symbolCall.value
-  }
-
-  if (nameCall.reverted) {
-    let nameBytesCall = tokenBytes.try_name()
-    if (!nameBytesCall.reverted) {
-      name = nameBytesCall.value.toString()
-    }
-  } else {
-    name = nameCall.value
-  }
-
-  if (!decimalCall.reverted) {
-    decimals = decimalCall.value
-  }
-
-  // COMMENT THE LINES ABOVE OUT FOR LOCAL DEV ON KOVAN
-
-  // !!! COMMENT THE LINES BELOW OUT FOR NON-LOCAL DEPLOYMENT
-  // This code allows Symbols to be added when testing on local Kovan
-  /*
-  if(address == '0xd0a1e359811322d97991e03f863a0c30c2cf029c')
-    symbol = 'WETH';
-  else if(address == '0x1528f3fcc26d13f7079325fb78d9442607781c8c')
-    symbol = 'DAI'
-  else if(address == '0xef13c0c8abcaf5767160018d268f9697ae4f5375')
-    symbol = 'MKR'
-  else if(address == '0x2f375e94fc336cdec2dc0ccb5277fe59cbf1cae5')
-    symbol = 'USDC'
-  else if(address == '0x1f1f156e0317167c11aa412e3d1435ea29dc3cce')
-    symbol = 'BAT'
-  else if(address == '0x86436bce20258a6dcfe48c9512d4d49a30c4d8c4')
-    symbol = 'SNX'
-  else if(address == '0x8c9e6c40d3402480ace624730524facc5482798c')
-    symbol = 'REP'
-  */
-  // !!! COMMENT THE LINES ABOVE OUT FOR NON-LOCAL DEPLOYMENT
-
-  let poolToken = new PoolToken(id)
-  poolToken.poolId = pool
-  poolToken.address = address
-  poolToken.name = name
-  poolToken.symbol = symbol
-  poolToken.decimals = decimals
-  poolToken.balance = BigDecimal.fromString('0')
-  poolToken.denormWeight = BigDecimal.fromString('0')
-  poolToken.save()
-}
-
+import {
+  hexToDecimal,
+  bigIntToDecimal,
+  tokenToDecimal,
+  createPoolShareEntity,
+  createPoolTokenEntity,
+  updatePoolLiquidity,
+  getCrpUnderlyingPool,
+  saveTransaction,
+  ZERO_BD,
+  decrPoolCount
+} from './helpers'
+import { ConfigurableRightsPool, OwnershipTransferred } from '../types/Factory/ConfigurableRightsPool'
 
 /************************************
  ********** Pool Controls ***********
@@ -129,20 +34,7 @@ export function handleSetSwapFee(event: LOG_CALL): void {
   pool.swapFee = swapFee
   pool.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'setSwapFee'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  saveTransaction(event, 'setSwapFee')
 }
 
 export function handleSetController(event: LOG_CALL): void {
@@ -152,21 +44,21 @@ export function handleSetController(event: LOG_CALL): void {
   pool.controller = controller
   pool.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'setController'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  saveTransaction(event, 'setController')
 }
+
+export function handleSetCrpController(event: OwnershipTransferred): void {
+  // This event occurs on the CRP contract rather than the underlying pool so we must perform a lookup.
+  let crp = ConfigurableRightsPool.bind(event.address)
+  let pool = Pool.load(getCrpUnderlyingPool(crp))
+  pool.crpController = event.params.newOwner
+  pool.save()
+
+  // We overwrite event address so that ownership transfers can be linked to Pool entities for above reason.
+  event.address = Address.fromString(pool.id)
+  saveTransaction(event, 'setCrpController')
+}
+
 
 export function handleSetPublicSwap(event: LOG_CALL): void {
   let poolId = event.address.toHex()
@@ -175,20 +67,7 @@ export function handleSetPublicSwap(event: LOG_CALL): void {
   pool.publicSwap = publicSwap
   pool.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'setPublicSwap'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  saveTransaction(event, 'setPublicSwap')
 }
 
 export function handleFinalize(event: LOG_CALL): void {
@@ -196,16 +75,11 @@ export function handleFinalize(event: LOG_CALL): void {
   let pool = Pool.load(poolId)
   // let balance = BigDecimal.fromString('100')
   pool.finalized = true
+  pool.symbol = 'BPT'
   pool.publicSwap = true
   // pool.totalShares = balance
   pool.save()
 
-  let userId = event.params.caller.toHex()
-  let user = User.load(userId)
-  if (user == null) {
-    user = new User(userId)
-    user.save()
-  }
   /*
   let poolShareId = poolId.concat('-').concat(event.params.caller.toHex())
   let poolShare = PoolShare.load(poolShareId)
@@ -217,20 +91,12 @@ export function handleFinalize(event: LOG_CALL): void {
   poolShare.save()
   */
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'finalize'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  let factory = Balancer.load('1')
+  factory.finalizedPoolCount = factory.finalizedPoolCount + 1
+  if (pool.crp) factory.privateCount = factory.privateCount + 1
+  factory.save()
+
+  saveTransaction(event, 'finalize')
 }
 
 export function handleRebind(event: LOG_CALL): void {
@@ -242,7 +108,7 @@ export function handleRebind(event: LOG_CALL): void {
     tokensList.push(tokenBytes)
   }
   pool.tokensList = tokensList
-
+  pool.tokensCount = BigInt.fromI32(tokensList.length)
 
   let address = Address.fromString(event.params.data.toHexString().slice(34,74))
   let denormWeight = hexToDecimal(event.params.data.toHexString().slice(138), 18)
@@ -256,9 +122,9 @@ export function handleRebind(event: LOG_CALL): void {
   } else {
     let oldWeight = poolToken.denormWeight
     if (denormWeight > oldWeight) {
-      pool.totalWeight = pool.totalWeight + (denormWeight - oldWeight);
+      pool.totalWeight = pool.totalWeight + (denormWeight - oldWeight)
     } else {
-      pool.totalWeight = pool.totalWeight - (oldWeight - denormWeight);
+      pool.totalWeight = pool.totalWeight - (oldWeight - denormWeight)
     }
   }
 
@@ -267,22 +133,15 @@ export function handleRebind(event: LOG_CALL): void {
   poolToken.balance = balance
   poolToken.denormWeight = denormWeight
   poolToken.save()
+
+  if (balance.equals(ZERO_BD)) {
+    decrPoolCount(pool.active, pool.finalized, pool.crp)
+    pool.active = false
+  }
   pool.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'rebind'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  updatePoolLiquidity(poolId)
+  saveTransaction(event, 'rebind')
 }
 
 export function handleUnbind(event: LOG_CALL): void {
@@ -293,6 +152,7 @@ export function handleUnbind(event: LOG_CALL): void {
   let index = tokensList.indexOf(tokenBytes)
   tokensList.splice(index, 1)
   pool.tokensList = tokensList
+  pool.tokensCount = BigInt.fromI32(tokensList.length)
 
 
   let address = Address.fromString(event.params.data.toHexString().slice(-40))
@@ -302,55 +162,32 @@ export function handleUnbind(event: LOG_CALL): void {
   pool.save()
   store.remove('PoolToken', poolTokenId)
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'unbind'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  updatePoolLiquidity(poolId)
+  saveTransaction(event, 'unbind')
 }
 
-export function handleGulp(event: LOG_CALL): void {
-  let poolId = event.address.toHex()
+export function handleGulp(call: GulpCall): void {
+  let poolId = call.to.toHexString()
   let pool = Pool.load(poolId)
 
-  let address = Address.fromString(event.params.data.toHexString().slice(-40))
+  let address = call.inputs.token.toHexString()
 
-  let token = BToken.bind(address)
-  let balanceCall = token.try_balanceOf(Address.fromString(poolId))
+  let bpool = BPool.bind(Address.fromString(poolId))
+  let balanceCall = bpool.try_getBalance(Address.fromString(address))
 
-  let poolTokenId = poolId.concat('-').concat(address.toHexString())
+  let poolTokenId = poolId.concat('-').concat(address)
   let poolToken = PoolToken.load(poolTokenId)
 
-  let balance = poolToken.balance
-  if (!balanceCall.reverted) {
-    balance = bigIntToDecimal(balanceCall.value, poolToken.decimals)
+  if (poolToken != null) {
+    let balance = ZERO_BD
+    if (!balanceCall.reverted) {
+      balance = bigIntToDecimal(balanceCall.value, poolToken.decimals)
+    }
+    poolToken.balance = balance
+    poolToken.save()
   }
-  poolToken.balance = balance
-  poolToken.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'gulp'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  updatePoolLiquidity(poolId)
 }
 
 /************************************
@@ -371,27 +208,12 @@ export function handleJoinPool(event: LOG_JOIN): void {
   poolToken.balance = newAmount
   poolToken.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'join'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  updatePoolLiquidity(poolId)
+  saveTransaction(event, 'join')
 }
 
 export function handleExitPool(event: LOG_EXIT): void {
   let poolId = event.address.toHex()
-  let pool = Pool.load(poolId)
-  pool.exitsCount += BigInt.fromI32(1)
-  pool.save()
 
   let address = event.params.tokenOut.toHex()
   let poolTokenId = poolId.concat('-').concat(address.toString())
@@ -401,20 +223,16 @@ export function handleExitPool(event: LOG_EXIT): void {
   poolToken.balance = newAmount
   poolToken.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
+  let pool = Pool.load(poolId)
+  pool.exitsCount += BigInt.fromI32(1)
+  if (newAmount.equals(ZERO_BD)) {
+    decrPoolCount(pool.active, pool.finalized, pool.crp)
+    pool.active = false
   }
-  transaction.event = 'exit'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  pool.save()
+
+  updatePoolLiquidity(poolId)
+  saveTransaction(event, 'exit')
 }
 
 /************************************
@@ -423,9 +241,6 @@ export function handleExitPool(event: LOG_EXIT): void {
 
 export function handleSwap(event: LOG_SWAP): void {
   let poolId = event.address.toHex()
-  let pool = Pool.load(poolId)
-  pool.swapsCount += BigInt.fromI32(1)
-  pool.save()
 
   let tokenIn = event.params.tokenIn.toHex()
   let poolTokenInId = poolId.concat('-').concat(tokenIn.toString())
@@ -443,91 +258,159 @@ export function handleSwap(event: LOG_SWAP): void {
   poolTokenOut.balance = newAmountOut
   poolTokenOut.save()
 
+  updatePoolLiquidity(poolId)
+
   let swapId = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
   let swap = Swap.load(swapId)
   if (swap == null) {
     swap = new Swap(swapId)
   }
+
+  let pool = Pool.load(poolId)
+  let tokensList: Array<Bytes> = pool.tokensList
+  let tokenOutPriceValue = ZERO_BD
+  let tokenOutPrice = TokenPrice.load(tokenOut)
+
+  if (tokenOutPrice != null) {
+    tokenOutPriceValue = tokenOutPrice.price
+  } else {
+    for (let i: i32 = 0; i < tokensList.length; i++) {
+      let tokenPriceId = tokensList[i].toHexString()
+      if (!tokenOutPriceValue.gt(ZERO_BD) && tokenPriceId !== tokenOut) {
+        let tokenPrice = TokenPrice.load(tokenPriceId)
+        if (tokenPrice !== null && tokenPrice.price.gt(ZERO_BD)) {
+          let poolTokenId = poolId.concat('-').concat(tokenPriceId)
+          let poolToken = PoolToken.load(poolTokenId)
+          tokenOutPriceValue = tokenPrice.price
+            .times(poolToken.balance)
+            .div(poolToken.denormWeight)
+            .times(poolTokenOut.denormWeight)
+            .div(poolTokenOut.balance)
+        }
+      }
+    }
+  }
+
+  let totalSwapVolume = pool.totalSwapVolume
+  let totalSwapFee = pool.totalSwapFee
+  let liquidity = pool.liquidity
+  let swapValue = ZERO_BD
+  let swapFeeValue = ZERO_BD
+  let factory = Balancer.load('1')
+
+  if (tokenOutPriceValue.gt(ZERO_BD)) {
+    swapValue = tokenOutPriceValue.times(tokenAmountOut)
+    swapFeeValue = swapValue.times(pool.swapFee)
+    totalSwapVolume = totalSwapVolume.plus(swapValue)
+    totalSwapFee = totalSwapFee.plus(swapFeeValue)
+
+
+    factory.totalSwapVolume = factory.totalSwapVolume.plus(swapValue)
+    factory.totalSwapFee = factory.totalSwapFee.plus(swapFeeValue)
+
+    pool.totalSwapVolume = totalSwapVolume
+    pool.totalSwapFee = totalSwapFee
+  }
+
+  pool.swapsCount += BigInt.fromI32(1)
+  factory.txCount += BigInt.fromI32(1)
+  factory.save()
+
+  if (newAmountIn.equals(ZERO_BD) || newAmountOut.equals(ZERO_BD)) {
+    decrPoolCount(pool.active, pool.finalized, pool.crp)
+    pool.active = false
+  }
+  pool.save()
+
   swap.caller = event.params.caller
   swap.tokenIn = event.params.tokenIn
   swap.tokenInSym = poolTokenIn.symbol
   swap.tokenOut = event.params.tokenOut
-  swap.tokenOutSym = poolTokenOut.symbol;
+  swap.tokenOutSym = poolTokenOut.symbol
   swap.tokenAmountIn = tokenAmountIn
   swap.tokenAmountOut = tokenAmountOut
   swap.poolAddress = event.address.toHex()
+  swap.userAddress = event.transaction.from.toHex()
+  swap.poolTotalSwapVolume = totalSwapVolume
+  swap.poolTotalSwapFee = totalSwapFee
+  swap.poolLiquidity = liquidity
+  swap.value = swapValue
+  swap.feeValue = swapFeeValue
   swap.timestamp = event.block.timestamp.toI32()
   swap.save()
 
-  let tx = event.transaction.hash.toHexString().concat('-').concat(event.logIndex.toString())
-  let transaction = Transaction.load(tx)
-  if (transaction == null) {
-    transaction = new Transaction(tx)
-  }
-  transaction.event = 'swap'
-  transaction.poolAddress = event.address.toHex()
-  transaction.userAddress = event.transaction.from.toHex()
-  transaction.gasUsed = event.transaction.gasUsed.toBigDecimal()
-  transaction.gasPrice = event.transaction.gasPrice.toBigDecimal()
-  transaction.tx = event.transaction.hash
-  transaction.timestamp = event.block.timestamp.toI32()
-  transaction.block = event.block.number.toI32()
-  transaction.save()
+  saveTransaction(event, 'swap')
 }
-
 
 /************************************
  *********** POOL SHARES ************
  ************************************/
 
  export function handleTransfer(event: Transfer): void {
+  let poolId = event.address.toHex()
 
-   let poolId = event.address.toHex()
+  let ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
-   const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+  let isMint = event.params.src.toHex() == ZERO_ADDRESS
+  let isBurn = event.params.dst.toHex() == ZERO_ADDRESS
 
-   let isMint = event.params.src.toHex() == ZERO_ADDRESS
-   let isBurn = event.params.dst.toHex() == ZERO_ADDRESS
+  let poolShareFromId = poolId.concat('-').concat(event.params.src.toHex())
+  let poolShareFrom = PoolShare.load(poolShareFromId)
+  let poolShareFromBalance = poolShareFrom == null ? ZERO_BD : poolShareFrom.balance
 
-   let poolShareFromId = poolId.concat('-').concat(event.params.src.toHex())
-   let poolShareFrom = PoolShare.load(poolShareFromId)
+  let poolShareToId = poolId.concat('-').concat(event.params.dst.toHex())
+  let poolShareTo = PoolShare.load(poolShareToId)
+  let poolShareToBalance = poolShareTo == null ? ZERO_BD : poolShareTo.balance
 
-   let poolShareToId = poolId.concat('-').concat(event.params.dst.toHex())
-   let poolShareTo = PoolShare.load(poolShareToId)
+  let pool = Pool.load(poolId)
 
-   let pool = Pool.load(poolId)
+  if (isMint) {
+    if (poolShareTo == null) {
+      createPoolShareEntity(poolShareToId, poolId, event.params.dst.toHex())
+      poolShareTo = PoolShare.load(poolShareToId)
+    }
+    poolShareTo.balance += tokenToDecimal(event.params.amt.toBigDecimal(), 18)
+    poolShareTo.save()
+    pool.totalShares += tokenToDecimal(event.params.amt.toBigDecimal(), 18)
+  } else if (isBurn) {
+    if (poolShareFrom == null) {
+    createPoolShareEntity(poolShareFromId, poolId, event.params.src.toHex())
+    poolShareFrom = PoolShare.load(poolShareFromId)
+  }
+    poolShareFrom.balance -= tokenToDecimal(event.params.amt.toBigDecimal(), 18)
+    poolShareFrom.save()
+    pool.totalShares -= tokenToDecimal(event.params.amt.toBigDecimal(), 18)
+  } else {
+    if (poolShareTo == null) {
+      createPoolShareEntity(poolShareToId, poolId, event.params.dst.toHex())
+      poolShareTo = PoolShare.load(poolShareToId)
+    }
+    poolShareTo.balance += tokenToDecimal(event.params.amt.toBigDecimal(), 18)
+    poolShareTo.save()
 
-   if (isMint) {
-     if (poolShareTo == null) {
-       createPoolShareEntity(poolShareToId, poolId, event.params.dst.toHex())
-       poolShareTo = PoolShare.load(poolShareToId)
-     }
-     poolShareTo.balance += tokenToDecimal(event.params.amt.toBigDecimal(), 18)
-     poolShareTo.save()
-     pool.totalShares += tokenToDecimal(event.params.amt.toBigDecimal(), 18)
-   } else if (isBurn) {
-     if (poolShareFrom == null) {
-       createPoolShareEntity(poolShareFromId, poolId, event.params.src.toHex())
-       poolShareFrom = PoolShare.load(poolShareFromId)
-     }
-     poolShareFrom.balance -= tokenToDecimal(event.params.amt.toBigDecimal(), 18)
-     poolShareFrom.save()
-     pool.totalShares -= tokenToDecimal(event.params.amt.toBigDecimal(), 18)
-   } else {
-     if (poolShareTo == null) {
-       createPoolShareEntity(poolShareToId, poolId, event.params.dst.toHex())
-       poolShareTo = PoolShare.load(poolShareToId)
-     }
-     poolShareTo.balance += tokenToDecimal(event.params.amt.toBigDecimal(), 18)
-     poolShareTo.save()
+    if (poolShareFrom == null) {
+      createPoolShareEntity(poolShareFromId, poolId, event.params.src.toHex())
+      poolShareFrom = PoolShare.load(poolShareFromId)
+    }
+    poolShareFrom.balance -= tokenToDecimal(event.params.amt.toBigDecimal(), 18)
+    poolShareFrom.save()
+  }
 
-     if (poolShareFrom == null) {
-       createPoolShareEntity(poolShareFromId, poolId, event.params.src.toHex())
-       poolShareFrom = PoolShare.load(poolShareFromId)
-     }
-     poolShareFrom.balance -= tokenToDecimal(event.params.amt.toBigDecimal(), 18)
-     poolShareFrom.save()
-   }
+  if (
+    poolShareTo !== null
+    && poolShareTo.balance.notEqual(ZERO_BD)
+    && poolShareToBalance.equals(ZERO_BD)
+  ) {
+    pool.holdersCount += BigInt.fromI32(1)
+  }
 
-   pool.save()
- }
+  if (
+    poolShareFrom !== null
+    && poolShareFrom.balance.equals(ZERO_BD)
+    && poolShareFromBalance.notEqual(ZERO_BD)
+  ) {
+    pool.holdersCount -= BigInt.fromI32(1)
+  }
+
+  pool.save()
+}
