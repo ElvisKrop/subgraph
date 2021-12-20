@@ -5,7 +5,7 @@
     "create:local": "graph create protofire/swarm-markets --node http://127.0.0.1:8020",
     "codegen": "graph codegen --output-dir src/types/",
     "build": "graph build",
-    "auth": "graph auth --product hosted-service https://api.thegraph.com/deploy/ $THE_GRAPH_ACCESS_TOKEN",
+    "auth": "graph auth --product hosted-service https://api.thegraph.com/deploy/",
     "deploy": "graph deploy $GITHUB_USERNAME/$SUBGRAPH_NAME $GRAPH_CONFIG_FILE --ipfs https://api.thegraph.com/ipfs/ --node https://api.thegraph.com/deploy/",
     "deploy:rinkeby": "graph deploy elviskrop/swarm-markets-rinkeby subgraph.rinkeby.yaml --debug --ipfs https://api.thegraph.com/ipfs/ --node https://api.thegraph.com/deploy/",
     "deploy:mumbai": "graph deploy protofire/swarm-markets-mumbai subgraph.mumbai.yaml --debug --ipfs https://api.thegraph.com/ipfs/ --node https://api.thegraph.com/deploy/",
