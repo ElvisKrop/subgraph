@@ -1,8 +1,8 @@
-name: Deploy Graph
+name: Deploy Beta Graph
 
 on:
   push:
-    branches: [master]
+    branches: [develop]
 
 jobs:
   deploy-rinkeby:
@@ -23,6 +23,6 @@ jobs:
         env:
           ACCESS_TOKEN: ${{secrets.GRAPH_ACCESS_TOKEN}}
           GITHUB_USERNAME: ${{github.actor}}
-          SUBGRAPH_NAME: "swarm-rinkeby"
+          SUBGRAPH_NAME: "swarm-rinkeby-beta"
           GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
         run: yarn deploy
