@@ -20,15 +20,11 @@ jobs:
         run: yarn codegen
       - name: Build
         run: yarn build
-#      - name: Authentication
-#        env:
-#          ACCESS_TOKEN: ${{secrets.THE_GRAPH_ACCESS_TOKEN}}
-#        run: yarn auth
       - name: Deploy
         env:
-          ACCESS_TOKEN: ${{secrets.THE_GRAPH_ACCESS_TOKEN}}
-          GITHUB_USERNAME: ${{github.actor}}
-          SUBGRAPH_NAME: "swarm-rinkeby"
+          ACCESS_TOKEN: ${{secrets.GRAPH_ACCESS_TOKEN}}
+          GITHUB_USERNAME: ${{GITHUB_ACTOR}}
+          SUBGRAPH_NAME: ${{secrets.RINKEBY_SUBGRAPH_NAME}}
           GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
         run: yarn deploy
 
