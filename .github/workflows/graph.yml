@@ -22,7 +22,7 @@ jobs:
 #        run: yarn build
       - name: Authentication
         env:
-          THE_GRAPH_ACCESS_TOKEN: ${{secrets.$THE_GRAPH_ACCESS_TOKEN}}
+          ACCESS_TOKEN: ${{secrets.$THE_GRAPH_ACCESS_TOKEN}}
         run: yarn auth
 #      - name: Deploy
 #        env:
