@@ -20,9 +20,10 @@ jobs:
         run: yarn codegen
       - name: Build
         run: yarn build
-      - uses: gtaschuk/graph-deploy@v0.1.5
+      - uses: gtaschuk/graph-deploy@v0.1.0
         with:
           graph_access_token: ${{secrets.GRAPH_ACCESS_TOKEN}}
           graph_subgraph_name: "swarm-rinkeby"
+          graph_deploy_studio: "false"
           graph_account: ${{github.actor}}
           graph_config_file: "subgraph.rinkeby.yaml"
