@@ -14,8 +14,8 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 10
-#      - name: Install
-#        run: yarn --frozen-lockfile
+      - name: Install
+        run: yarn --frozen-lockfile
 #      - name: Codegen
 #        run: yarn codegen
 #      - name: Build
