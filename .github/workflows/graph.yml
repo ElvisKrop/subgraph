@@ -16,20 +16,21 @@ jobs:
           node-version: 10
       - name: Install
         run: yarn --frozen-lockfile
-#      - name: Codegen
-#        run: yarn codegen
-#      - name: Build
-#        run: yarn build
-      - name: Authentication
+      - name: Codegen
+        run: yarn codegen
+      - name: Build
+        run: yarn build
+#      - name: Authentication
+#        env:
+#          ACCESS_TOKEN: ${{secrets.THE_GRAPH_ACCESS_TOKEN}}
+#        run: yarn auth
+      - name: Deploy
         env:
           ACCESS_TOKEN: ${{secrets.THE_GRAPH_ACCESS_TOKEN}}
-        run: yarn auth
-#      - name: Deploy
-#        env:
-#          GITHUB_USERNAME: ${{github.actor}}
-#          SUBGRAPH_NAME: "swarm-rinkeby"
-#          GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
-#        run: yarn deploy
+          GITHUB_USERNAME: ${{github.actor}}
+          SUBGRAPH_NAME: "swarm-rinkeby"
+          GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
+        run: yarn deploy
 
 #      - uses: gtaschuk/graph-deploy@v0.1.0
 #        with:
