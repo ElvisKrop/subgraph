@@ -7,7 +7,6 @@ on:
 jobs:
   deploy-rinkeby:
     runs-on: ubuntu-latest
-    environment: graph
     steps:
       - uses: actions/checkout@v2
       - name: Install node
