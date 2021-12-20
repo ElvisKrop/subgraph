@@ -23,7 +23,7 @@ jobs:
       - name: Deploy
         env:
           ACCESS_TOKEN: ${{secrets.GRAPH_ACCESS_TOKEN}}
-          GITHUB_USERNAME: ${{GITHUB_ACTOR}}
+          GITHUB_USERNAME: ${{github.actor}}
           SUBGRAPH_NAME: ${{secrets.RINKEBY_SUBGRAPH_NAME}}
           GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
         run: yarn deploy
