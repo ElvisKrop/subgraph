@@ -9,6 +9,7 @@ jobs:
       uses: elviskrop/subgraph/.github/workflows/graph.rinkeby.yml@master
       with:
         SUBGRAPH_NAME: swarm-rinkeby
+      secrets:
         GRAPH_ACCESS_TOKEN: ${{ secrets.GRAPH_ACCESS_TOKEN }}
 #  deploy-rinkeby:
 #    runs-on: ubuntu-latest
