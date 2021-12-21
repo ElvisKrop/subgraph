@@ -3,6 +3,10 @@ name: Deploy The Graph on Rinkeby
 on:
   workflow_call:
     inputs:
+      environment:
+        type: string
+        required: false
+        default: graph
       subgraph_name:
         type: string
         required: true
@@ -21,7 +25,7 @@ on:
 jobs:
   deploy-rinkeby:
     runs-on: ubuntu-latest
-    environment: graph
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v2
       - name: Install node
