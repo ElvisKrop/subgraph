@@ -1,4 +1,4 @@
-name: Deploy Graph
+name: Deploy Stable Graphs
 
 on:
   push:
@@ -8,7 +8,8 @@ jobs:
     deploy-stable-rinkeby:
       uses: elviskrop/subgraph/.github/workflows/graph.rinkeby.yml@master
       with:
-        subgraph_name: swarm-rinkeby
+        SUBGRAPH_NAME: swarm-rinkeby
+        GRAPH_ACCESS_TOKEN: ${{ secrets.GRAPH_ACCESS_TOKEN }}
 #  deploy-rinkeby:
 #    runs-on: ubuntu-latest
 #    steps:
