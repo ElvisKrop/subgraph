@@ -5,24 +5,28 @@ on:
     branches: [ master ]
 
 jobs:
-  deploy-rinkeby:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install node
-        uses: actions/setup-node@v1
-        with:
-          node-version: 12.22.8
-      - name: Install dependencies
-        run: yarn --frozen-lockfile
-      - name: Codegen
-        run: yarn codegen
-      - name: Build
-        run: yarn build
-      - name: Deploy
-        env:
-          ACCESS_TOKEN: ${{secrets.GRAPH_ACCESS_TOKEN}}
-          GITHUB_USERNAME: ${{github.actor}}
-          SUBGRAPH_NAME: "swarm-rinkeby"
-          GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
-        run: yarn deploy
+    deploy-stable-rinkeby:
+      uses: ./.github/workflows/graph.rinkeby.yml@master
+      with:
+        subgraph_name: swarm-rinkeby
+#  deploy-rinkeby:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2
+#      - name: Install node
+#        uses: actions/setup-node@v1
+#        with:
+#          node-version: 12.22.8
+#      - name: Install dependencies
+#        run: yarn --frozen-lockfile
+#      - name: Codegen
+#        run: yarn codegen
+#      - name: Build
+#        run: yarn build
+#      - name: Deploy
+#        env:
+#          ACCESS_TOKEN: ${{secrets.GRAPH_ACCESS_TOKEN}}
+#          GITHUB_USERNAME: ${{github.actor}}
+#          SUBGRAPH_NAME: "swarm-rinkeby"
+#          GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
+#        run: yarn deploy
