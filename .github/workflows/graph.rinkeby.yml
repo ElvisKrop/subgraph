@@ -21,6 +21,7 @@ on:
 jobs:
   deploy-rinkeby:
     runs-on: ubuntu-latest
+    environment: graph
     steps:
       - uses: actions/checkout@v2
       - name: Install node
@@ -35,7 +36,7 @@ jobs:
         run: yarn build
       - name: Deploy
         env:
-          ACCESS_TOKEN: ${{ github.secrets.GRAPH_ACCESS_TOKEN }}
+          ACCESS_TOKEN: ${{ secrets.GRAPH_ACCESS_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
           SUBGRAPH_NAME: ${{ inputs.subgraph_name }}${{ github.event.inputs.subgraph_name }}
           GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
