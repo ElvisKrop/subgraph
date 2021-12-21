@@ -6,7 +6,7 @@ on:
 
 jobs:
     deploy-stable-rinkeby:
-      uses: ${{GITHUB_REPOSITORY}}/.github/workflows/graph.rinkeby.yml@master
+      uses: elviskrop/subgraph/.github/workflows/graph.rinkeby.yml@master
       with:
         subgraph_name: swarm-rinkeby
 #  deploy-rinkeby:
