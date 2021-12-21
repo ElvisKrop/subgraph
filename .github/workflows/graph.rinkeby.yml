@@ -24,7 +24,7 @@ jobs:
   deploy-rinkeby:
     runs-on: ubuntu-latest
     steps:
-      - uses: elviskrop/subgraph/.github/workflows/ci.yml
+      - uses: elviskrop/subgraph/.github/workflows/ci.yml@master
       - name: Deploy
         env:
           ACCESS_TOKEN: ${{ secrets.GRAPH_ACCESS_TOKEN }}
