@@ -37,6 +37,6 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ secrets.GRAPH_ACCESS_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
-          SUBGRAPH_NAME: ${{ inputs.subgraph_name }} ${{ github.event.inputs.subgraph_name }}
+          SUBGRAPH_NAME: ${{ inputs.subgraph_name }}${{ github.event.inputs.subgraph_name }}
           GRAPH_CONFIG_FILE: "subgraph.rinkeby.yaml"
         run: yarn deploy
